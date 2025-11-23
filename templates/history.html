@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Lịch sử chấm công</h2>
+    <div class="filter-group">
+        <select id="employee-filter" onchange="loadHistory()">
+            <option value="">-- Tất cả nhân viên --</option>
+            {% for emp in employees %}
+            <option value="{{ emp.id }}">{{ emp.name }} ({{ emp.code }})</option>
+            {% endfor %}
+        </select>
+        <button class="btn-secondary" onclick="loadHistory()"><i class="fa-solid fa-rotate"></i> Làm mới</button>
+    </div>
+</div>
+
+<div class="card">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Thời gian</th>
+                <th>Mã NV</th>
+                <th>Họ tên</th>
+                <th>Loại</th>
+                <th>Trạng thái</th>
+                <th>Score</th>
+            </tr>
+        </thead>
+        <tbody id="history-list">
+            <!-- Data injected here -->
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function loadHistory() {
+        const empId = document.getElementById('employee-filter').value;
+        let url = '/api/history';
+        if (empId) url += `?employee_id=${empId}`;
+
+        fetch(url)
+            .then(res => res.json())
+            .then(data => {
+                const tbody = document.getElementById('history-list');
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center">Không có dữ liệu</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = data.map(item => {
+                    const date = new Date(item.timestamp);
+                    const formattedDate = date.toLocaleString('vi-VN');
+                    const statusClass = item.late_minutes > 0 ? 'status-late' : 'status-ontime';
+                    const statusText = item.late_minutes > 0 ? `Trễ ${item.late_minutes.toFixed(0)}p` : 'Đúng giờ';
+
+                    return `
+                        <tr>
+                            <td>${formattedDate}</td>
+                            <td>${item.code || '-'}</td>
+                            <td>${item.name || 'Unknown'}</td>
+                            <td><span class="badge badge-${item.check_type.toLowerCase()}">${item.check_type}</span></td>
+                            <td><span class="badge ${statusClass}">${statusText}</span></td>
+                            <td>${(item.score * 100).toFixed(1)}%</td>
+                        </tr>
+                    `;
+                }).join('');
+            });
+    }
+
+    // Initial load
+    loadHistory();
+</script>
+{% endblock %}

@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Quản lý nhân viên</h2>
+    <button class="btn-primary" onclick="openModal('addEmployeeModal')">
+        <i class="fa-solid fa-plus"></i> Thêm nhân viên
+    </button>
+</div>
+
+<div class="card">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Mã NV</th>
+                <th>Họ tên</th>
+                <th>Giới tính</th>
+                <th>Ca làm việc</th>
+                <th>Hành động</th>
+            </tr>
+        </thead>
+        <tbody id="employee-list">
+            {% for emp in employees %}
+            <tr>
+                <td>{{ emp.code }}</td>
+                <td>{{ emp.name }}</td>
+                <td>{{ emp.gender or '-' }}</td>
+                <td>
+                    <button class="btn-sm btn-outline" onclick="openShiftModal({{ emp.id }}, '{{ emp.name }}')">
+                        <i class="fa-solid fa-clock"></i> Xếp ca
+                    </button>
+                </td>
+                <td>
+                    <button class="btn-sm btn-success" onclick="openEnrollModal({{ emp.id }}, '{{ emp.name }}')">
+                        <i class="fa-solid fa-camera"></i> Đăng ký mặt
+                    </button>
+                    <button class="btn-sm btn-danger" onclick="deleteEmployee({{ emp.id }})">
+                        <i class="fa-solid fa-trash"></i> Xóa
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Add Employee Modal -->
+<div id="addEmployeeModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeModal('addEmployeeModal')">&times;</span>
+        <h3>Thêm nhân viên mới</h3>
+        <form id="add-employee-form">
+            <div class="form-group">
+                <label>Mã nhân viên</label>
+                <input type="text" name="code" required>
+            </div>
+            <div class="form-group">
+                <label>Họ tên</label>
+                <input type="text" name="name" required>
+            </div>
+            <div class="form-group">
+                <label>Giới tính</label>
+                <select name="gender">
+                    <option value="Nam">Nam</option>
+                    <option value="Nữ">Nữ</option>
+                </select>
+            </div>
+            <button type="submit" class="btn-primary">Lưu</button>
+        </form>
+    </div>
+</div>
+
+<!-- Shift Modal -->
+<div id="shiftModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeModal('shiftModal')">&times;</span>
+        <h3>Xếp ca làm việc: <span id="shift-emp-name"></span></h3>
+        <form id="shift-form">
+            <input type="hidden" name="employee_id" id="shift-emp-id">
+            <div class="form-group">
+                <label>Thứ trong tuần</label>
+                <select name="day_of_week">
+                    <option value="0">Thứ 2</option>
+                    <option value="1">Thứ 3</option>
+                    <option value="2">Thứ 4</option>
+                    <option value="3">Thứ 5</option>
+                    <option value="4">Thứ 6</option>
+                    <option value="5">Thứ 7</option>
+                    <option value="6">Chủ nhật</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Giờ bắt đầu</label>
+                    <input type="time" name="start_time" required>
+                </div>
+                <div class="form-group">
+                    <label>Giờ kết thúc</label>
+                    <input type="time" name="end_time" required>
+                </div>
+            </div>
+            <button type="submit" class="btn-primary">Lưu ca làm</button>
+        </form>
+        <div id="current-shifts" class="mt-3">
+            <!-- List of shifts -->
+        </div>
+    </div>
+</div>
+
+<!-- Enroll Modal -->
+<div id="enrollModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeModal('enrollModal')">&times;</span>
+        <h3>Đăng ký khuôn mặt: <span id="enroll-emp-name"></span></h3>
+        <div class="webcam-container small">
+            <video id="enroll-video" autoplay playsinline></video>
+            <canvas id="enroll-canvas" style="display:none;"></canvas>
+        </div>
+        <button class="btn-primary mt-2" onclick="captureEnroll()">Chụp & Lưu</button>
+        <input type="hidden" id="enroll-emp-id">
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Modal logic
+    function openModal(id) { document.getElementById(id).style.display = 'block'; }
+    function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+    // Add Employee
+    document.getElementById('add-employee-form').onsubmit = function (e) {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const data = Object.fromEntries(formData.entries());
+
+        fetch('/api/employees', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }).then(res => res.json()).then(data => {
+            if (data.success) location.reload();
+            else alert(data.error);
+        });
+    };
+
+    // Delete Employee
+    function deleteEmployee(id) {
+        if (!confirm('Bạn có chắc muốn xóa vĩnh viễn nhân viên này? Hành động này không thể hoàn tác!')) return;
+        fetch(`/api/employees/${id}`, { method: 'DELETE' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) location.reload();
+                else alert(data.error);
+            });
+    }
+
+    // Shift Logic
+    function openShiftModal(id, name) {
+        document.getElementById('shift-emp-id').value = id;
+        document.getElementById('shift-emp-name').innerText = name;
+        openModal('shiftModal');
+        loadShifts(id);
+    }
+
+    document.getElementById('shift-form').onsubmit = function (e) {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const data = Object.fromEntries(formData.entries());
+        data.employee_id = parseInt(data.employee_id);
+
+        fetch('/api/shifts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }).then(res => res.json()).then(data => {
+            if (data.success) {
+                alert('Đã lưu ca làm!');
+                loadShifts(document.getElementById('shift-emp-id').value);
+            } else alert(data.error);
+        });
+    };
+
+    function loadShifts(id) {
+        fetch(`/api/shifts/${id}`)
+            .then(res => res.json())
+            .then(data => {
+                const container = document.getElementById('current-shifts');
+                if (data.length === 0) {
+                    container.innerHTML = '<p>Chưa có ca làm việc nào.</p>';
+                    return;
+                }
+                const days = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'CN'];
+                container.innerHTML = '<h4>Ca làm hiện tại:</h4><ul>' +
+                    data.map(s => `<li>${days[s.day_of_week]}: ${s.start_time} - ${s.end_time}</li>`).join('') +
+                    '</ul>';
+            });
+    }
+
+    // Enroll Logic
+    let enrollStream = null;
+    function openEnrollModal(id, name) {
+        document.getElementById('enroll-emp-id').value = id;
+        document.getElementById('enroll-emp-name').innerText = name;
+        openModal('enrollModal');
+
+        navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+            enrollStream = stream;
+            document.getElementById('enroll-video').srcObject = stream;
+        });
+    }
+
+    function captureEnroll() {
+        const video = document.getElementById('enroll-video');
+        const canvas = document.getElementById('enroll-canvas');
+        const id = document.getElementById('enroll-emp-id').value;
+
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext('2d').drawImage(video, 0, 0);
+        const dataURL = canvas.toDataURL('image/jpeg');
+
+        fetch('/api/capture_face', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ employee_id: parseInt(id), image: dataURL })
+        }).then(res => res.json()).then(data => {
+            if (data.success) {
+                alert('Đăng ký thành công!');
+                closeModal('enrollModal');
+                if (enrollStream) enrollStream.getTracks().forEach(t => t.stop());
+            } else {
+                alert(data.error || data.message);
+            }
+        });
+    }
+</script>
+{% endblock %}

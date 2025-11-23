@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Attendance System</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <i class="fa-solid fa-face-smile-beam logo-icon"></i>
+                <h2>FaceCheck</h2>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="/" class="{{ 'active' if request.path == '/' else '' }}">
+                    <i class="fa-solid fa-chart-line"></i> Dashboard
+                </a>
+                <a href="/employees" class="{{ 'active' if request.path == '/employees' else '' }}">
+                    <i class="fa-solid fa-users"></i> Nhân viên
+                </a>
+                <a href="/history" class="{{ 'active' if request.path == '/history' else '' }}">
+                    <i class="fa-solid fa-clock-rotate-left"></i> Lịch sử
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <p>Version 2.0</p>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-bar">
+                <h1 id="page-title">Dashboard</h1>
+                <div class="user-profile">
+                    <span>Admin</span>
+                    <div class="avatar">A</div>
+                </div>
+            </header>
+            
+            <div class="content-area">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

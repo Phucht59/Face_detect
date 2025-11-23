@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="dashboard-grid">
+    <!-- Left Column: Webcam & Status -->
+    <div class="webcam-section card">
+        <div class="card-header">
+            <h3><i class="fa-solid fa-camera"></i> Chấm công</h3>
+            <div class="status-badge" id="connection-status">Ready</div>
+        </div>
+        <div class="webcam-container">
+            <video id="video" autoplay playsinline></video>
+            <canvas id="canvas" style="display:none;"></canvas>
+            <div class="scan-overlay"></div>
+        </div>
+        <!-- Manual Check-in Button -->
+        <div class="checkin-controls">
+            <button id="checkin-btn" class="btn btn-primary">
+                <i class="fa-solid fa-fingerprint"></i> Chấm công
+            </button>
+        </div>
+        <div class="last-checkin" id="last-checkin-info">
+            <p class="placeholder-text">Nhấn nút để chấm công</p>
+        </div>
+    </div>
+
+    <!-- Right Column: Stats & Recent Activity -->
+    <div class="stats-section">
+        <div class="stats-cards">
+            <div class="stat-card">
+                <div class="icon-box blue"><i class="fa-solid fa-users"></i></div>
+                <div class="stat-info">
+                    <h4>Tổng nhân viên</h4>
+                    <p id="total-employees">Loading...</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="icon-box green"><i class="fa-solid fa-check-circle"></i></div>
+                <div class="stat-info">
+                    <h4>Đã chấm công</h4>
+                    <p id="today-checkins">Loading...</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="icon-box orange"><i class="fa-solid fa-clock"></i></div>
+                <div class="stat-info">
+                    <h4>Đi trễ</h4>
+                    <p id="today-late">Loading...</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="recent-activity card">
+            <div class="card-header">
+                <h3><i class="fa-solid fa-list"></i> Hoạt động gần đây</h3>
+            </div>
+            <ul class="activity-list" id="activity-list">
+                <!-- Activity items will be injected here -->
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Dashboard specific scripts will go here (webcam logic, polling)
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const statusBadge = document.getElementById('connection-status');
+    const lastCheckinInfo = document.getElementById('last-checkin-info');
+    const activityList = document.getElementById('activity-list');
+    const checkinBtn = document.getElementById('checkin-btn');
+    let isProcessing = false;
+
+    // Start Webcam
+    navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => {
+            video.srcObject = stream;
+            statusBadge.textContent = "Camera Ready";
+            statusBadge.style.background = "#2ecc71";
+        })
+        .catch(err => {
+            console.error("Webcam error:", err);
+            statusBadge.textContent = "Camera Error";
+            statusBadge.classList.add("error");
+            checkinBtn.disabled = true;
+        });
+
+    // Manual Check-in Button
+    checkinBtn.addEventListener('click', () => {
+        if (!isProcessing) {
+            captureAndSend();
+        }
+    });
+
+    function captureAndSend() {
+        if (isProcessing) return;
+        
+        isProcessing = true;
+        checkinBtn.disabled = true;
+        checkinBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Đang xử lý...';
+        statusBadge.textContent = "Processing...";
+        statusBadge.style.background = "#f39c12";
+        
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
+        const dataURL = canvas.toDataURL('image/jpeg', 0.7);
+
+        fetch('/api/recognize_webcam', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: dataURL })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    updateLastCheckin(data);
+                    refreshActivity();
+                    statusBadge.textContent = "Success";
+                    statusBadge.style.background = "#2ecc71";
+                } else if (data.liveness_failed) {
+                    statusBadge.textContent = "Fake Face Detected";
+                    statusBadge.style.background = "#e74c3c";
+                    showError("Phát hiện giả mạo!");
+                } else if (data.validation_failed) {
+                    showError(data.message || "Chấm công quá nhanh!");
+                } else {
+                    statusBadge.textContent = "No Face Detected";
+                    statusBadge.style.background = "#95a5a6";
+                    showError("Không phát hiện khuôn mặt!");
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                showError("Lỗi kết nối!");
+            })
+            .finally(() => {
+                isProcessing = false;
+                checkinBtn.disabled = false;
+                checkinBtn.innerHTML = '<i class="fa-solid fa-fingerprint"></i> Chấm công';
+                // Reset status after 3 seconds
+                setTimeout(() => {
+                    statusBadge.textContent = "Camera Ready";
+                    statusBadge.style.background = "#2ecc71";
+                }, 3000);
+            });
+    }
+    
+    function showError(message) {
+        lastCheckinInfo.innerHTML = `
+            <div class="checkin-error">
+                <i class="fa-solid fa-circle-xmark" style="color: #e74c3c;"></i>
+                <p>${message}</p>
+            </div>
+        `;
+        setTimeout(() => {
+            lastCheckinInfo.innerHTML = '<p class="placeholder-text">Nhấn nút để chấm công</p>';
+        }, 5000);
+    }
+
+    function updateLastCheckin(data) {
+        // Don't show if it's Unknown
+        if (data.is_unknown) {
+            showError("Không nhận diện được!");
+            return;
+        }
+        
+        lastCheckinInfo.innerHTML = `
+            <div class="checkin-success">
+                <i class="fa-solid fa-circle-check"></i>
+                <div>
+                    <h4>${data.name}</h4>
+                    <p>${data.message}</p>
+                </div>
+            </div>
+        `;
+        // Clear after 5 seconds
+        setTimeout(() => {
+            lastCheckinInfo.innerHTML = '<p class="placeholder-text">Nhấn nút để chấm công</p>';
+        }, 5000);
+    }
+
+    function refreshActivity() {
+        // Fetch recent history (simplified for now, ideally separate API)
+        fetch('/api/history?limit=5')
+            .then(res => res.json())
+            .then(data => {
+                activityList.innerHTML = data.map(item => `
+                    <li class="activity-item">
+                        <div class="time">${new Date(item.timestamp).toLocaleTimeString()}</div>
+                        <div class="details">
+                            <strong>${item.name || 'Unknown'}</strong>
+                            <span>${item.check_type} - ${item.late_minutes > 0 ? '<span class="late">Trễ ' + item.late_minutes.toFixed(0) + 'p</span>' : 'Đúng giờ'}</span>
+                        </div>
+                    </li>
+                `).join('');
+            });
+    }
+
+    // Initial load
+    refreshActivity();
+</script>
+{% endblock %}
